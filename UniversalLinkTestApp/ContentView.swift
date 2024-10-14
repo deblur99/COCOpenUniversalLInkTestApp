@@ -8,6 +8,11 @@
 import SafariServices
 import SwiftUI
 
+enum URLType: String {
+    case https = "https://"
+    case uri = "cocopen://"
+}
+
 enum Path: String {
     case root = "/"
     case entrance = "/entrance"
@@ -24,11 +29,13 @@ enum NavigationPath: Hashable {
 }
 
 struct ContentView: View {
+    let baseUri = "cocopen:/"
     let baseUrlString = "https://cocopen.net"
     let paths: [Path] = [.root, .entrance, .room]
     
     @State private var selectedPath: Path = .root
     @State private var enteredRoomNumber: String = ""
+    @State private var isOnUri: Bool = false
     @State private var openingBrowser: OpeningBrowser = .systemDefault
     
     // 모달 상태관리
@@ -38,7 +45,7 @@ struct ContentView: View {
     @State private var navigationPath: [NavigationPath] = []
     
     var toBeOpenedUrlString: String {
-        var result = baseUrlString
+        var result = !isOnUri ? baseUrlString : baseUri
         result.append(selectedPath.rawValue)
         
         if selectedPath != .room {
@@ -58,55 +65,106 @@ struct ContentView: View {
     
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 20.0) {
-                Text("\(toBeOpenedUrlString)")
-                
-                TextField("roomId:", text: $enteredRoomNumber)
-                    .onChange(of: enteredRoomNumber) { oldValue, newValue in
-                        if newValue.count > 8 {
-                            enteredRoomNumber = oldValue
+            List {
+                Section("url entry") {
+                    VStack(alignment: .leading, spacing: 20.0) {
+                        Text("\(toBeOpenedUrlString)")
+                        
+                        HStack {
+                            TextField("roomId", text: $enteredRoomNumber)
+                                .onChange(of: enteredRoomNumber) { oldValue, newValue in
+                                    if newValue.count > 8 {
+                                        enteredRoomNumber = oldValue
+                                    }
+                                    
+                                    // 라틴 문자와 숫자만 남기는 정규 표현식
+                                    let regex = try! Regex("[A-Za-z0-9]+")
+                                    
+                                    enteredRoomNumber = enteredRoomNumber
+                                        .matches(of: regex).map { match in
+                                            String(match.0)
+                                        }
+                                        .joined()
+                                        .lowercased()
+                                }
+                                .keyboardType(.asciiCapable)
+                            
+                            Spacer()
+                            
+                            HStack {
+                                Button("root") {
+                                    selectedPath = .root
+                                }
+                                
+                                Button("entrance") {
+                                    selectedPath = .entrance
+                                }
+                                
+                                Button("room") {
+                                    selectedPath = .room
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.blue)
+                            .frame(minWidth: 200)
                         }
-                        enteredRoomNumber = enteredRoomNumber.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    }
-                    .multilineTextAlignment(.center)
-                    .frame(width: 150)
-                
-                HStack {
-                    Button("root") {
-                        selectedPath = .root
                     }
                     
-                    Button("entrance") {
-                        selectedPath = .entrance
+                    Toggle(isOn: $isOnUri) {
+                        Text("Use URI Scheme instead of HTTPS URL")
                     }
-                    
-                    Button("room") {
-                        selectedPath = .room
-                    }
+                    .toggleStyle(.switch)
                 }
                 
-                Picker("Opening Browser", selection: $openingBrowser) {
-                    Text(OpeningBrowser.systemDefault.rawValue).tag(OpeningBrowser.systemDefault)
-                    Text(OpeningBrowser.safari.rawValue).tag(OpeningBrowser.safari)
-                }
-                
-                switch openingBrowser {
-                case .systemDefault:
-                    Button("Open in System Default Browser") {
-                        debugStatus()
-                        UIApplication.shared.open(url)
+                Section("opening method") {
+                    VStack(alignment: .center) {
+                        if !isOnUri {
+                            Picker("Opening Browser", selection: $openingBrowser) {
+                                Text(OpeningBrowser.systemDefault.rawValue).tag(OpeningBrowser.systemDefault)
+                                Text(OpeningBrowser.safari.rawValue).tag(OpeningBrowser.safari)
+                            }
+                                
+                            switch openingBrowser {
+                            case .systemDefault:
+                                Button("Open in System Default Browser") {
+                                    #if DEBUG
+                                    debugStatus()
+                                    #else
+                                    UIApplication.shared.open(url)
+                                    #endif
+                                }
+                                .buttonStyle(.borderedProminent)
+                                    
+                            case .safari:
+                                Button("Open in Safari") {
+                                    #if DEBUG
+                                    debugStatus()
+                                    #else
+                                    navigationPath.append(.safariView)
+                                    #endif
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        } else {
+                            HStack {
+                                Spacer()
+                                
+                                Button("Open in System Default Browser") {
+                                    #if DEBUG
+                                    debugStatus()
+                                    #else
+                                    UIApplication.shared.open(url)
+                                    #endif
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .frame(maxWidth: .infinity)
+                                
+                                Spacer()
+                            }
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    
-                case .safari:
-                    Button("Open in Safari") {
-                        debugStatus()
-                        navigationPath.append(.safariView)
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
             }
-            .padding()
             .navigationTitle("Universal Link Test")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
